@@ -1,1 +1,1 @@
-python QA_longformer.py --data_path 1cycle_2/QA_convert2048.json --device 0,1 --root_save_dir ./QA/Longformer_1cycle --batch_size 8 --max_length 2048
+python QA_longformer.py --data_path 1cycle_2/QA_convert4096.json --device 0 --root_save_dir ./QA/Longformer_1cycle --batch_size 32 --max_length 4096
