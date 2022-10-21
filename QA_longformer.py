@@ -91,8 +91,8 @@ class QA_dataset():
             if ans_token[i] == con_token[st_token_idx]:
                 ed_token_idx = st_token_idx+len(ans_token[i:])
                 break
-                
-        return target.squeeze(), attention_mask.squeeze(), torch.tensor(st_token_idx), torch.tensor(ed_token_idx)
+        
+        return target.squeeze(), attention_mask.squeeze(), torch.tensor(st_token_idx), torch.tensor(ed_token_idx), ans
             
     
     
@@ -113,7 +113,7 @@ class QA(pl.LightningModule):
         return optimizer
     
     def training_step(self, train_batch, batch_idx):
-        target, attention_mask, start, end = train_batch
+        target, attention_mask, start, end, _ = train_batch
         outputs = self.model(input_ids = target, attention_mask = attention_mask, start_positions=start, end_positions=end)
         loss = outputs.loss
 
@@ -122,18 +122,20 @@ class QA(pl.LightningModule):
         return loss
     
     def validation_step(self, val_batch, batch_idx):
-        target, attention_mask, start, end = val_batch
-        outputs = self.model(input_ids = target, attention_mask = attention_mask, start_positions=start, end_positions=end)
+        target, attention_mask, start, end, truth = val_batch
+        outputs = self.model(input_ids = target, attention_mask = attention_mask)
         pred_st = outputs.start_logits.argmax()
         pred_end = outputs.end_logits.argmax() + 1
         pred = target[0][pred_st:pred_end].tolist()
-        truth = target[0][start:end].tolist()
+        # truth = target[0][start:end].tolist()
         f1 = QA_F1(truth, pred)
         self.log('val_f1', f1)
         em = EM(truth, pred)
         self.log('val_EM', em)
         loss = outputs.loss
         self.log('val_loss', loss)
+        
+        return loss
         
 def filter_data(QA_json,tokenizer, max_length):
     new_json = []
