@@ -133,9 +133,8 @@ class QA(pl.LightningModule):
         em = EM(truth, pred)
         self.log('val_EM', em)
         loss = outputs.loss
-        self.log('val_loss', loss)
-        
-        return loss
+        if loss:
+            self.log('val_loss', loss)
         
 def filter_data(QA_json,tokenizer, max_length):
     new_json = []
@@ -202,9 +201,9 @@ def main():
         filename='checkpoints_{epoch:d}',
         verbose=True,
         save_last=True,
-        save_top_k=2,
-        monitor='val_loss',
-        mode='min',
+        save_top_k=3,
+        monitor='val_f1',
+        mode='max',
     )
 
     
