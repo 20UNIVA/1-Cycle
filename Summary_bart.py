@@ -32,21 +32,21 @@ class summary_dataset(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
-        inputs = self.tokenizer(self.data[idx]['refinedData'],
+        inputs = self.tokenizer(self.data[idx]['refine_data'],
                                 return_tensors="pt",
                                 truncation=True,
                                 max_length=self.max_seq_len,
                                 padding='max_length',
                                 add_special_tokens=True)
-        summ = self.data[idx]['labelingData'][0]['annotation'][0]['value']
+        #summ = self.data[idx]['summary']
         
         target = inputs["input_ids"]
         attention_mask = inputs["attention_mask"]
 
-        label = self.tokenizer(summ,
+        label = self.tokenizer(self.data[idx]['summary'],
                             return_tensors="pt",
                             truncation=True,
-                            max_length=128,
+                            max_length=int(self.max_seq_len*0.3),
                             padding='max_length',
                             add_special_tokens=True)["input_ids"]
         
@@ -78,7 +78,7 @@ class summary(pl.LightningModule):
         outputs = self.model(input_ids = x, attention_mask = y, labels = z)
         loss = outputs.loss
 
-        self.log('train_loss', loss, on_epoch = True)
+        self.log('train_loss', loss, on_epoch = True, on_step = True)
             
         return loss
     
@@ -97,28 +97,31 @@ def main():
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--test_name', type=str, default='test', help='')
     parser.add_argument('--root_save_dir', type=str, default='./summary', help='')
-    parser.add_argument('--data_dir', type=str, default='tmp/data_summary_345_revised.json', help='')
-    parser.add_argument('--pretrained_model', type=str, default='../LM_pretraining/model_albert/lightning_logs/version_4/checkpoints/checkpoints_epoch=0_step=5087.ckpt', help='')
+    parser.add_argument('--data_dir', type=str,nargs='*', default=['1cycle_2/clue_summary_result221014_2.json','1cycle_2/clue_summary_result221014.json'], help='')
+    parser.add_argument('--pretrain', type=str2bool)
+    parser.add_argument('--pretrained_model', type=str, default='./summary/b16_lr5e-5_ml1024/lightning_logs/version_0/checkpoints/last.ckpt', help='')
                                               
     
     parser.add_argument('--max_length', type=int, default=512, help='Maximum length of text')
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument("--learning_rate", default=3.5e-6, type=float, help="The initial learning rate for Adam.")
-    parser.add_argument("--num_train_epochs", type=int, dest="max_epochs", default=100)
+    parser.add_argument("--num_epoches", type=int, dest="max_epochs", default=100)
     #parser.add_argument("--pretrained", type=str2bool, default=False)
     
     #parser.add_argument("--num_device", type=int, default = 1)
-    #parser.add_argument("--device", type=str)
+    parser.add_argument("--device", type=str, default = '0')
     
     
     args = parser.parse_args()
     
-    os.environ["CUDA_VISIBLE_DEVICES"]= '0,1'  # Set the GPUs 0 and 1 to use
+    os.environ["CUDA_VISIBLE_DEVICES"]= args.device  # Set the GPUs 0 and 1 to use
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-
-    with open(args.data_dir, 'r') as f:
-        summary_datas = json.load(f)
+    
+    data=[]
+    for datas in args.data_dir:
+        with open(datas, 'r') as f:
+            data.append(json.load(f))
+    summary_datas = data[0] + data[1]
 
     val_ratio = 0.8
     train_len = int(len(summary_datas)*val_ratio)
@@ -126,9 +129,9 @@ def main():
     summary_valid = summary_datas[train_len:]
     tokenizer = PreTrainedTokenizerFast.from_pretrained('hyunwoongko/kobart')
     summary_train_dataset = summary_dataset(tokenizer, summary_train)
-    summary_train_dataloader = DataLoader(summary_train_dataset, batch_size=64, shuffle=True)
+    summary_train_dataloader = DataLoader(summary_train_dataset, batch_size=args.batch_size, shuffle=True)
     summary_valid_dataset = summary_dataset(tokenizer, summary_valid)
-    summary_valid_dataloader = DataLoader(summary_valid_dataset, batch_size=1, shuffle=False)
+    summary_valid_dataloader = DataLoader(summary_valid_dataset, batch_size=2, shuffle=False)
     #kobert_tokenizer = KoBERTTokenizer.from_pretrained('skt/kobert-base-v1')
         
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
@@ -141,7 +144,11 @@ def main():
     )
 
     summary_model = summary(args)
-    trainer = pl.Trainer(precision=16, accelerator='gpu', devices =2, max_epochs = args.max_epochs, strategy='ddp',  accumulate_grad_batches= 64, default_root_dir=args.root_save_dir, callbacks=[checkpoint_callback])
+    if args.pretrain == False:
+        trainer = pl.Trainer(precision=16, accelerator='ddp', gpus=2, max_epochs = args.max_epochs,  accumulate_grad_batches= 64, default_root_dir=args.root_save_dir, callbacks=[checkpoint_callback])
+    else:
+        trainer = pl.Trainer(precision=16, accelerator='ddp', gpus=2, max_epochs = args.max_epochs,  accumulate_grad_batches= 64, default_root_dir=args.root_save_dir, callbacks=[checkpoint_callback], resume_from_checkpoint = args.pretrained_model)
+        
     trainer.fit(summary_model, summary_train_dataloader, summary_valid_dataloader)
 
 
