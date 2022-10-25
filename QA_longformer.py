@@ -123,18 +123,19 @@ class QA(pl.LightningModule):
     
     def validation_step(self, val_batch, batch_idx):
         target, attention_mask, start, end, truth = val_batch
-        outputs = self.model(input_ids = target, attention_mask = attention_mask)
+        outputs = self.model(input_ids = target, attention_mask = attention_mask,
+                            start_positions=start, end_positions=end)
         pred_st = outputs.start_logits.argmax()
         pred_end = outputs.end_logits.argmax() + 1
         pred = target[0][pred_st:pred_end].tolist()
-        # truth = target[0][start:end].tolist()
+        truth = target[0][start:end].tolist()
         f1 = QA_F1(truth, pred)
         self.log('val_f1', f1)
         em = EM(truth, pred)
         self.log('val_EM', em)
         loss = outputs.loss
-        if loss:
-            self.log('val_loss', loss)
+        # if loss:
+        self.log('val_loss', loss)
         
 def filter_data(QA_json,tokenizer, max_length):
     new_json = []
